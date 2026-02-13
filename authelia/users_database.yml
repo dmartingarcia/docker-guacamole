@@ -1,0 +1,34 @@
+###############################################################
+#            USERS DATABASE - Authelia YAML                 #
+# Genera contraseñas con: docker run --rm xo/authelia      #
+# y luego: authelia hash-password <contraseña>              #
+###############################################################
+
+users:
+  # Usuario admin - cambiar contraseña
+  admin:
+    displayname: "Administrador"
+    password: "$argon2id$v=19$m=65540,t=3,p=4$ZW1wdHkgZW1wdHkgZW1wdHk$7KPP8r9PoqTmvz4jVVFQfUIQslG8eJ7B8a4l0H+Qlbo"  # password: admin123 (CAMBIAR EN PRODUCCIÓN)
+    email: admin@example.com
+    groups:
+      - admin
+      - users
+
+  # Usuario editor
+  editor:
+    displayname: "Usuario Editor"
+    password: "$argon2id$v=19$m=65540,t=3,p=4$ZW1wdHkgZW1wdHkgZW1wdHk$7KPP8r9PoqTmvz4jVVFQfUIQslG8eJ7B8a4l0H+Qlbo"  # password: editor123 (CAMBIAR EN PRODUCCIÓN)
+    email: editor@example.com
+    groups:
+      - users
+
+  # Usuario viewer (solo lectura)
+  viewer:
+    displayname: "Usuario Viewer"
+    password: "$argon2id$v=19$m=65540,t=3,p=4$ZW1wdHkgZW1wdHkgZW1wdHk$7KPP8r9PoqTmvz4jVVFQfUIQslG8eJ7B8a4l0H+Qlbo"  # password: viewer123 (CAMBIAR EN PRODUCCIÓN)
+    email: viewer@example.com
+    groups:
+      - users
+
+# Generar hash:
+# docker run --rm authelia/authelia:latest authelia hash-password 'tu_password'

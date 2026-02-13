@@ -1,0 +1,167 @@
+services:
+  # PostgreSQL para Guacamole
+  postgres:
+    image: postgres:15.6-alpine3.19
+    container_name: guacamole_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${GUACAMOLE_DB_NAME:-guacamole}
+      POSTGRES_USER: ${GUACAMOLE_DB_USER:-guacamole}
+      POSTGRES_PASSWORD: ${GUACAMOLE_DB_PASSWORD:-changeme123}
+      POSTGRES_INITDB_ARGS: "-c shared_preload_libraries=pg_stat_statements"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - guacamole_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${GUACAMOLE_DB_USER:-guacamole}"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    security_opt:
+      - no-new-privileges:true
+
+  # Authelia - Autenticación centralizada
+  authelia:
+    image: authelia/authelia:4.37.5
+    container_name: guacamole_authelia
+    restart: unless-stopped
+    user: "1000:1000"
+    environment:
+      TZ: ${TZ:-Europe/Madrid}
+      AUTHELIA_JWT_SECRET: ${JWT_SECRET}
+      AUTHELIA_SESSION_SECRET: ${SESSION_SECRET}
+      AUTHELIA_STORAGE_ENCRYPTION_KEY: ${STORAGE_ENCRYPTION_KEY}
+    volumes:
+      - ./authelia/configuration.yml:/config/configuration.yml:ro
+      - ./authelia/users_database.yml:/config/users_database.yml:ro
+      - authelia_data:/var/lib/authelia
+    networks:
+      - guacamole_network
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.authelia.rule=Host(`authelia.${DOMAIN}`)
+      - traefik.http.routers.authelia.entrypoints=websecure
+      - traefik.http.routers.authelia.tls=true
+      - traefik.http.routers.authelia.tls.certresolver=letsencrypt
+      - traefik.http.services.authelia.loadbalancer.server.port=9091
+      - traefik.http.middlewares.authelia.forwardauth.address=http://authelia:9091/api/verify?rd=https://authelia.${DOMAIN}
+      - traefik.http.middlewares.authelia.forwardauth.trustForwardHeader=true
+      - traefik.http.middlewares.authelia.forwardauth.authResponseHeaders=Remote-User,Remote-Groups,Remote-Name,Remote-Email
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9091/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    security_opt:
+      - no-new-privileges:true
+
+  # Traefik - Proxy inverso
+  traefik:
+    image: traefik:v2.10.7
+    container_name: guacamole_traefik
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      TZ: ${TZ:-Europe/Madrid}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./traefik/traefik.yml:/traefik.yml:ro
+      - ./traefik/config.yml:/config.yml:ro
+      - letsencrypt_data:/letsencrypt
+    networks:
+      - guacamole_network
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.traefik.rule=Host(`traefik.${DOMAIN}`)
+      - traefik.http.routers.traefik.entrypoints=websecure
+      - traefik.http.routers.traefik.tls=true
+      - traefik.http.routers.traefik.tls.certresolver=letsencrypt
+      - traefik.http.routers.traefik.service=api@internal
+      - traefik.http.routers.traefik.middlewares=authelia@docker,securityHeaders@file
+    depends_on:
+      authelia:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "traefik", "healthcheck", "--ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # Guacamole - Acceso RDP
+  guacamole:
+    image: guacamole/guacamole:1.5.4
+    container_name: guacamole_app
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      GUACD_HOSTNAME: guacd
+      GUACD_PORT: 4822
+      POSTGRES_HOSTNAME: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DATABASE: ${GUACAMOLE_DB_NAME:-guacamole}
+      POSTGRES_USER: ${GUACAMOLE_DB_USER:-guacamole}
+      POSTGRES_PASSWORD: ${GUACAMOLE_DB_PASSWORD:-changeme123}
+      EXTENSIONS: auth-header
+      # Autenticación por header (Authelia)
+      GUACAMOLE_HOME: /etc/guacamole
+      LOGBACK_LEVEL: warn
+      # Timeouts y límites
+      WEBAPP_CONTEXT: /guacamole
+      MAX_LOG_IN_ATTEMPTS: 3
+      MYSQL_SSL_MODE: disabled
+    volumes:
+      - ./guacamole/guacamole.properties:/etc/guacamole/guacamole.properties:ro
+      - guacamole_data:/var/lib/guacamole
+    networks:
+      - guacamole_network
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.guacamole.rule=Host(`guacamole.${DOMAIN}`)
+      - traefik.http.routers.guacamole.entrypoints=websecure
+      - traefik.http.routers.guacamole.tls=true
+      - traefik.http.routers.guacamole.tls.certresolver=letsencrypt
+      - traefik.http.routers.guacamole.middlewares=authelia@docker,securityHeaders@file
+      - traefik.http.services.guacamole.loadbalancer.server.port=8080
+    depends_on:
+      postgres:
+        condition: service_healthy
+      guacd:
+        condition: service_healthy
+      authelia:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/guacamole/"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+  # Guacd - Demonio de Guacamole
+  guacd:
+    image: guacamole/guacd:1.5.4
+    container_name: guacamole_daemon
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - guacamole_network
+    healthcheck:
+      test: ["CMD", "nc", "-z", "127.0.0.1", "4822"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  postgres_data:
+  guacamole_data:
+  authelia_data:
+  letsencrypt_data:
+
+networks:
+  guacamole_network:
+    driver: bridge

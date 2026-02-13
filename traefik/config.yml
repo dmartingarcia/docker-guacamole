@@ -1,0 +1,82 @@
+# Configuraciones adicionales de Traefik para seguridad bulletproof
+
+tls:
+  options:
+    default:
+      minVersion: VersionTLS12
+      maxVersion: VersionTLS13
+      cipherSuites:
+        - TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
+        - TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256
+        - TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
+      preferServerCipherSuites: true
+      sniStrict: true
+
+http:
+  middlewares:
+    # Security headers robustos
+    securityHeaders:
+      headers:
+        accessControlAllowOriginList:
+          - "https://${DOMAIN}"
+        accessControlMaxAgeSeconds: 31536000
+        accessControlAllowCredentials: true
+        contentSecurityPolicy: "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'"
+        browserXssFilter: true
+        contentTypeNosniff: true
+        forceSTSHeader: true
+        frameDeny: true
+        stsIncludeSubdomains: true
+        stsMaxAge: 63072000
+        stsPreload: true
+        referrerPolicy: "strict-origin-when-cross-origin"
+        permissionsPolicy: "geolocation=(), microphone=(), camera=(), payment=()"
+        customRequestHeaders:
+          X-Frame-Options: "SAMEORIGIN"
+          X-Content-Type-Options: "nosniff"
+          X-XSS-Protection: "1; mode=block"
+
+    # Compress responses
+    compress:
+      compress:
+        minResponseBodyBytes: 1024
+        excludedContentTypes:
+          - text/event-stream
+          - image/jpeg
+          - image/png
+
+    # Rate limiting para proteger contra brute force
+    rateLimit:
+      rateLimit:
+        average: 100
+        period: 1m
+        burst: 20
+
+    # Rate limit más estricto para login
+    rateLimitStrict:
+      rateLimit:
+        average: 5
+        period: 1m
+        burst: 2
+
+  routers:
+    # Redirect HTTP a HTTPS por defecto
+    httpRedirect:
+      entryPoints:
+        - web
+      rule: "HostRegexp(`{host:.+}`)"
+      service: "noop"
+      middlewares:
+        - redirectScheme
+
+  services:
+    noop:
+      loadBalancer:
+        servers:
+          - url: "http://localhost"
+
+  middlewares:
+    redirectScheme:
+      redirectScheme:
+        scheme: https
+        permanent: true

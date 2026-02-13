@@ -1,0 +1,58 @@
+# Environment variables
+.env
+.env.local
+.env.*.local
+.env.guacamole
+.env.guacamole.bak
+.env.secrets
+
+# Docker volumes and data
+postgres_data/
+authelia_data/
+guacamole_data/
+letsencrypt_data/
+
+# Temporary files
+*.tmp
+*.bak
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.sublime-workspace
+*.sublime-project
+*.iml
+
+# Logs
+*.log
+logs/
+
+# Backup files
+*.backup
+*.tar.gz
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# Node (if used)
+node_modules/
+
+# Database files outside volumes
+*.db
+*.sqlite
+*.sqlite3

@@ -1,0 +1,107 @@
+###############################################################
+#                   AUTHELIA CONFIGURATION                   #
+###############################################################
+
+jwt_secret: ${AUTHELIA_JWT_SECRET}
+default_redirection_url: https://guacamole.${DOMAIN}
+default_2fa_method: totp
+
+server:
+  host: 0.0.0.0
+  port: 9091
+  path_prefix: /api
+  asset_path: /config/assets
+  read_buffer_size: 4096
+  write_buffer_size: 4096
+
+log:
+  level: info
+  format: json
+
+# Métodos de autenticación
+authentication_backend:
+  file:
+    path: /config/users_database.yml
+    watch: false
+    password:
+      algorithm: argon2id
+      iterations: 3
+      salt_length: 16
+      parallelism: 4
+      memory: 65540
+      key_length: 32
+
+# Configuración TOTP (autenticación de 2 factores)
+totp:
+  issuer: Guacamole
+  period: 30
+  skew: 1
+  disable: false
+
+# Password reset deshabilitado (sin recuperación de contraseña)
+password_reset:
+  enabled: false
+
+# Sesiones
+session:
+  name: authelia_session
+  secret: ${AUTHELIA_SESSION_SECRET}
+  expiration: 3600
+  inactivity: 1800
+  remember_me_duration: 2592000
+  domain: ${DOMAIN}
+  same_site: Lax
+  secure: true
+  sqlite:
+    path: /var/lib/authelia/session.db
+
+# Regulación (brute force protection)
+regulation:
+  max_retries: 3           # 3 intentos fallidos
+  find_time: 300           # en 5 minutos
+  ban_time: 3600           # bloqueo por 1 hora
+
+# Almacenamiento
+storage:
+  encryption_key: ${AUTHELIA_STORAGE_ENCRYPTION_KEY}
+  provider: sqlite
+  sqlite:
+    path: /var/lib/authelia/db.sqlite3
+
+# Notificaciones (filesystem para desarrollo)
+notifier:
+  disable_startup_check: false
+  filesystem:
+    filename: /var/lib/authelia/notifications.txt
+
+# Control de Acceso (RBAC)
+access_control:
+  default_policy: deny
+  networks:
+    - name: private
+      networks:
+        - 10.0.0.0/8
+        - 172.16.0.0/12
+        - 192.168.0.0/16
+  rules:
+    # Authelia dashboard - público
+    - domain: authelia.${DOMAIN}
+      policy: public
+
+    # Guacamole - autenticación requerida
+    - domain: guacamole.${DOMAIN}
+      policy: one_factor
+      networks:
+        - 0.0.0.0/0
+
+    # Traefik dashboard - solo admin
+    - domain: traefik.${DOMAIN}
+      policy: one_factor
+      subject:
+        - group:admin
+      networks:
+        - 0.0.0.0/0
+
+# OAuth2 deshabilitado (se puede habilitar si es necesario)
+oauth2:
+  enabled: false
